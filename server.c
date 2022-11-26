@@ -1,180 +1,137 @@
 #include <unistd.h>
 #include <stdio.h> // for perror()
 #include <stdlib.h>
+#include <string.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 #include <fcntl.h>
 
 #include <netinet/in.h> // for struct sockaddr_in
 #include <arpa/inet.h> // for inet_pton
+#include <net/if.h>
 
-#include <string.h>
+#include </usr/include/postgresql/libpq-fe.h>
 
-#define PORT 40002
+#define PUERTO 40002
 #define BUFSIZE 2000
 
+static void obtenerDireccionIP(unsigned char ip[15]);
+static void encenderFoco();
+static int buscarEnLaBD();
 
+int main(){
 
-#include <stdio.h>
-#include <unistd.h>
-#include <string.h>
+	printf("\tPrograma servidor\n");
 
-#include <sys/socket.h>
-#include <sys/ioctl.h>
-#include <netinet/in.h>
-#include <net/if.h>
-#include <arpa/inet.h>
-
-static void read_one_line(int client_socket_fd, char buf[], int buf_size);
-const char* obtenerDireccionIP(unsigned char ip[15]);
-
-int main(void)
-{
 	unsigned char ip[15];
-	const char* name = obtenerDireccionIP(ip);
-	int server_sock_fd;
+	int socket_servidor;
 	int rc;
-	char buf[BUFSIZE];
+	char buffer[BUFSIZE];
 	int done = 0;
+	
+	char usuario[20];
+	char contrasena[20];
+	
+	obtenerDireccionIP(ip);
 
-	server_sock_fd = socket(PF_INET, SOCK_STREAM, 0);
-	if (server_sock_fd < 0) {
+	socket_servidor = socket(PF_INET, SOCK_STREAM, 0);
+	if (socket_servidor < 0) {
 		perror("No se pudo conectar al socket: ");
 		exit(1);
 	}
 
 	struct sockaddr_in server_addr;
 	server_addr.sin_family = AF_INET;
-	server_addr.sin_port = htons(PORT);
+	server_addr.sin_port = htons(PUERTO);
 	inet_pton(AF_INET, ip, &server_addr.sin_addr);
 
-	rc = bind(
-		server_sock_fd,
-		(struct sockaddr *) &server_addr,
-		sizeof(server_addr));
+	rc = bind(socket_servidor, (struct sockaddr *) &server_addr, sizeof(server_addr));
 	if (rc < 0) {
 		perror("Couldn't bind server socket");
 		exit(1);
 	}
 
-	rc = listen(server_sock_fd, 5);
+	rc = listen(socket_servidor, 5);
 	if (rc < 0) {
 		perror("Couldn't listen on server socket");
 		exit(1);
 	}
 
-
 	printf("La direccion IP es: %s\n", inet_ntoa(server_addr.sin_addr));
 	printf("Escuchando en el puerto: %d\n", (int) ntohs(server_addr.sin_port));
 
-
 	while (!done) {
-		int client_socket_fd;
+		int socket_cliente;
 		struct sockaddr_in client_addr;
 		socklen_t client_addr_size = sizeof(client_addr);
 
-		client_socket_fd = accept(
-			server_sock_fd,
-			(struct sockaddr*) &client_addr,
-			&client_addr_size);
-		if (client_socket_fd < 0) {
-			perror("Couldn't accept connection");
+		socket_cliente = accept(socket_servidor, (struct sockaddr*) &client_addr, &client_addr_size);
+		if (socket_cliente < 0) {
+			perror("No se pudo aceptar la conexión");
 			exit(1);
 		}
 		
-		printf("Cliente conectado");
+		printf("\n---Cliente conectado---\n");
+		/*Lee osaurio*/
+		if(recv(socket_cliente, buffer, 100, 0) < 0)
+  		{ //Comenzamos a recibir datos del cliente
+		  //Si recv() recibe 0 el cliente ha cerrado la conexion. Si es menor que 0 ha habido algún error.
+		    printf("Error al recibir los datos\n");
+		    close(socket_cliente);
+		    return 1;
+		}
+		else
+		{
+		    strcpy(usuario, buffer);
+		    bzero((char *)&buffer, sizeof(buffer));
+		}
+                printf("Nombre de usuario recibido: %s\n", usuario);
+                
+                
+                // Recibe la contrasena
+        if(recv(socket_cliente, buffer, 100, 0) < 0)
+		{ //Comenzamos a recibir datos del cliente
+		  //Si recv() recibe 0 el cliente ha cerrado la conexion. Si es menor que 0 ha habido algún error.
+			printf("Error al recibir los datos\n");
+			close(socket_cliente);
+			return 1;
+		}
+		else
+		{
+			strcpy(contrasena, buffer);
+			bzero((char *)&buffer, sizeof(buffer));
+		}
+                printf("Contraseña recibida: %s\n", contrasena);
 
-		read_one_line(client_socket_fd, buf, BUFSIZE);
 
-		close(client_socket_fd);
+		if (buscarEnLaBD(usuario, contrasena) == 0){
+			/* Para el foco */
+			send(socket_cliente, "Encender", 10, 0);
+		}
+		else{
+			printf("Datos incorrecots");
+			send(socket_cliente, "Apagar", 10, 0);
+		}
+		
+		
+		close(socket_cliente);
+		
 
-		write(0, buf, strlen(buf));
-
-		if (strcmp(buf, "quit\r\n") == 0) {
+		if (strcmp(buffer, "quit\r\n") == 0) {
 			done = 1;
 		}
 	}
 
-	close(server_sock_fd);
+	close(socket_servidor);
 
 	return 0;
 }
 
-static void read_one_line(int client_socket_fd, char buf[], int buf_size)
+static void obtenerDireccionIP(unsigned char ip[15])
 {
-	int total_read = 0;
-	int max_read = buf_size - 1;
-	int done = 0;
-
-	while (!done && total_read < max_read) {
-		char c;
-		int rc;
-
-		rc = read(client_socket_fd, &c, 1);
-		if (rc > 0) {
-			// got a byte of data
-			buf[total_read] = c;
-			total_read++;
-
-			// reached end of line?
-			if (c == '\n') {
-				done = 1;
-			}
-		} else if (rc == 0) {
-			// end of file
-			buf[total_read] = c;
-			total_read++;
-			done = 1;
-		} else {
-			// error
-			perror("Error reading from client socket");
-			done = 1;
-		}
-		
-	}
-
-	buf[total_read] = '\0';
-	
-	
-	total_read = 0;
-	max_read = buf_size - 1;
-	done = 0;
-	
-	while (!done && total_read < max_read) {
-		char c;
-		int rc;
-
-		rc = read(client_socket_fd, &c, 1);
-		if (rc > 0) {
-			// got a byte of data
-			buf[total_read] = c;
-			total_read++;
-
-			// reached end of line?
-			if (c == '\n') {
-				done = 1;
-			}
-		} else if (rc == 0) {
-			// end of file
-			buf[total_read] = c;
-			total_read++;
-			done = 1;
-		} else {
-			// error
-			perror("Error reading from client socket");
-			done = 1;
-		}
-		
-	}
-
-	buf[total_read] = '\0';	
-}
-
-const char* obtenerDireccionIP(unsigned char ip[15])
-{
-
     int fd;
     struct ifreq ifr;
 
@@ -198,5 +155,30 @@ const char* obtenerDireccionIP(unsigned char ip[15])
     /*Extract IP Address*/
     strcpy(ip, inet_ntoa(((struct sockaddr_in*)&ifr.ifr_addr)->sin_addr));
 
-    return ip;
+}
+
+static int buscarEnLaBD(char usuario[10], char contrasena[10]){
+	PGconn *conn;
+	PGresult *res;
+	
+	conn = PQsetdbLogin("localhost", "5432", NULL, NULL, "postgres", "postgres", "c03052002");
+	
+	int resultado = 1;
+	
+	char consulta[1024];
+	snprintf(consulta, sizeof(consulta), "SELECT * FROM proyectoTD.usuario WHERE nombre = '%s' AND contrasena = '%s'", usuario, contrasena);
+	
+	if(PQstatus(conn) != CONNECTION_BAD){
+		res = PQexec(conn, consulta);
+		printf("---Validando nombre de usuario y contrasena---\n");
+		if(res != NULL && PGRES_TUPLES_OK == PQresultStatus(res)){
+			printf("Datos correctos\n");
+			resultado = 0;
+			PQclear(res);
+		}
+	} else{
+		printf("\n No se pudo conectar a la Base");
+	}
+	PQfinish(conn);
+	return resultado;
 }
