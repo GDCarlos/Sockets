@@ -12,18 +12,13 @@
 
 #include <string.h>
 
-// #define PORT 40002
+static void foco(char resultado[10]);
 
 int main()
 {
+	char buffer[10];
 	int rc;
-
-	/*
-	if (argc < 2) {
-		fprintf(stderr, "Usage: client <message>\n");
-		exit(1);
-	}
-	*/
+	char resultado[10];
 	
 	char usuario[20];
 	char contrasena[20];
@@ -32,15 +27,14 @@ int main()
 	int puerto;
 	
 	printf("\tPrograma cliente\n");
-	printf("Ingresse la direccion IP del servidor: ");
+	printf("Ingrese la direccion IP del servidor: ");
 	scanf("%s", direccionIP);
 	printf("Ingrese el puerto: ");
 	scanf("%d", &puerto);
 	
-	// printf("Direccion IP ingresada: %s\n", direccionIP);
 	
-	int s = socket(AF_INET, SOCK_STREAM, 0);
-	if (s < 0) {
+	int socket_servidor = socket(AF_INET, SOCK_STREAM, 0);
+	if (socket_servidor < 0) {
 		perror("Could not create socket");
 		exit(1);
 	}
@@ -50,40 +44,57 @@ int main()
 	server_addr.sin_port = htons(puerto);
 	inet_pton(AF_INET, direccionIP, &server_addr.sin_addr);
 
-	rc = connect(s, (struct sockaddr *) &server_addr, sizeof(server_addr));
+	rc = connect(socket_servidor, (struct sockaddr *) &server_addr, sizeof(server_addr));
 	if (rc < 0) {
 		perror("No se puedo establecer la conexion con el servidor");
 		exit(1);
 	}
 	
-	printf("---Conexion establecida---\n");
+	printf("\n---Conexion establecida---\n");
 	
 	printf("Ingrese el nombre de usuario: ");
 	scanf("%s", usuario);
 	printf("Ingrese la contrasena: ");
 	scanf("%s", contrasena);
 	
-	printf("Usuario: %s\n", usuario);
-	printf("Constrasena: %s\n", contrasena);
+  	
+	send(socket_servidor, usuario, 100, 0); //envio de usuario
+	send(socket_servidor, contrasena, 100, 0); //envio de contrasena
 	
 	
-	// Envia el nombre de usuario
-	size_t len = strlen(usuario);
-	char *msg = malloc(len + 3);
-	strcpy(msg, usuario);
-	strcat(msg, "\r\n");
-
-	write(s, msg, strlen(msg) + 1);
+	// Recibe la confirmacion
+	if(recv(socket_servidor, buffer, 10, 0) < 0)
+	{ //Comenzamos a recibir datos del cliente
+		printf("Error al recibir los datos\n");
+		close(socket_servidor);
+		return 1;
+	}
+	else
+	{
+		strcpy(resultado, buffer);
+		bzero((char *)&buffer, sizeof(buffer));
+		foco(resultado);
+	}
 	
-	// Envia la contrasena
-	len = strlen(contrasena);
-	msg = malloc(len + 3);
-	strcpy(msg, contrasena);
-	strcat(msg, "\r\n");
+	sleep(4);
 
-	write(s, msg, strlen(msg) + 1);
-
-	close(s);
+	close(socket_servidor);
 
 	return 0;
+}
+
+static void foco(char resultado[10]){
+	int value = strcmp(resultado, "Encender");
+	
+	if (value == 0){
+		int status = system("usbrelay HURTM_1=1 > /dev/null 2>&1");
+		printf("---Encendido\n");
+	}
+	
+	value = strcmp(resultado, "Apagar");
+	if (value == 0)
+	{
+		int status = system("usbrelay HURTM_1=0 > /dev/null 2>&1");
+		printf("---Apagado\n");
+	}
 }
