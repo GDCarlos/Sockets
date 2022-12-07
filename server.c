@@ -1,3 +1,5 @@
+//gcc server.c -o server -lpq -I /usr/include/postgresql
+
 #include <unistd.h>
 #include <stdio.h> // for perror()
 #include <stdlib.h>
@@ -19,7 +21,6 @@
 #define BUFSIZE 2000
 
 static void obtenerDireccionIP(unsigned char ip[15]);
-static void encenderFoco();
 static int buscarEnLaBD();
 
 int main(){
@@ -31,6 +32,7 @@ int main(){
 	int rc;
 	char buffer[BUFSIZE];
 	int done = 0;
+	int salir = 0;
 	
 	char usuario[20];
 	char contrasena[20];
@@ -74,49 +76,70 @@ int main(){
 			exit(1);
 		}
 		
-		printf("\n---Cliente conectado---\n");
-		/*Lee osaurio*/
-		if(recv(socket_cliente, buffer, 100, 0) < 0)
-  		{ //Comenzamos a recibir datos del cliente
-		  //Si recv() recibe 0 el cliente ha cerrado la conexion. Si es menor que 0 ha habido algún error.
-		    printf("Error al recibir los datos\n");
-		    close(socket_cliente);
-		    return 1;
-		}
-		else
-		{
-		    strcpy(usuario, buffer);
-		    bzero((char *)&buffer, sizeof(buffer));
-		}
-                printf("Nombre de usuario recibido: %s\n", usuario);
+		printf("\n\t---Cliente conectado---\n");
+		
+		while (!salir) {
+			
+			/*Lee osaurio*/
+			if(recv(socket_cliente, buffer, 100, 0) < 0)
+	  		{ //Comenzamos a recibir datos del cliente
+			  //Si recv() recibe 0 el cliente ha cerrado la conexion. Si es menor que 0 ha habido algún error.
+			    printf("Error al recibir los datos\n");
+			    close(socket_cliente);
+			    return 1;
+			}
+			else
+			{
+			    if (strcmp(buffer, "salir") == 0) {
+			    	salir = 1;
+			    }
+			    strcpy(usuario, buffer);
+			    bzero((char *)&buffer, sizeof(buffer));
+			}
+        	        printf("Nombre de usuario recibido: %s\n", usuario);
                 
                 
-                // Recibe la contrasena
-        if(recv(socket_cliente, buffer, 100, 0) < 0)
-		{ //Comenzamos a recibir datos del cliente
-		  //Si recv() recibe 0 el cliente ha cerrado la conexion. Si es menor que 0 ha habido algún error.
-			printf("Error al recibir los datos\n");
-			close(socket_cliente);
-			return 1;
+        	        // Recibe la contrasena
+        		if(recv(socket_cliente, buffer, 100, 0) < 0)
+			{ //Comenzamos a recibir datos del cliente
+			  //Si recv() recibe 0 el cliente ha cerrado la conexion. Si es menor que 0 ha habido algún error.
+				printf("Error al recibir los datos\n");
+				close(socket_cliente);
+				return 1;
+			}
+			else
+			{
+				if (strcmp(buffer, "salir") == 0) {
+					salir = salir && 1;
+					if (salir){
+						done = 1;
+					}
+				
+				}
+				strcpy(contrasena, buffer);
+				bzero((char *)&buffer, sizeof(buffer));
+			}
+        	        printf("Contraseña recibida: %s\n", contrasena);
+	
+			if (salir){
+				printf("\n\t---Conexion terminada\n");			
+			} else{
+			
+				
+				if (buscarEnLaBD(usuario, contrasena) == 0){
+					printf("---Datos correctos\n\n");
+					/* Para el foco */
+					send(socket_cliente, "Encender", 10, 0);
+				
+				}
+				else{
+					printf("---Datos incorrectos\n\n");
+					send(socket_cliente, "Apagar", 10, 0);
+				}		 
+			}
+			
 		}
-		else
-		{
-			strcpy(contrasena, buffer);
-			bzero((char *)&buffer, sizeof(buffer));
-		}
-                printf("Contraseña recibida: %s\n", contrasena);
-
-
-		if (buscarEnLaBD(usuario, contrasena) == 0){
-			/* Para el foco */
-			send(socket_cliente, "Encender", 10, 0);
-		}
-		else{
-			printf("Datos incorrecots");
-			send(socket_cliente, "Apagar", 10, 0);
-		}
-		
-		
+			
 		close(socket_cliente);
 		
 
@@ -154,7 +177,6 @@ static void obtenerDireccionIP(unsigned char ip[15])
 
     /*Extract IP Address*/
     strcpy(ip, inet_ntoa(((struct sockaddr_in*)&ifr.ifr_addr)->sin_addr));
-
 }
 
 static int buscarEnLaBD(char usuario[10], char contrasena[10]){
@@ -163,21 +185,26 @@ static int buscarEnLaBD(char usuario[10], char contrasena[10]){
 	
 	conn = PQsetdbLogin("localhost", "5432", NULL, NULL, "postgres", "postgres", "c03052002");
 	
-	int resultado = 1;
+	int resultado;
 	
 	char consulta[1024];
 	snprintf(consulta, sizeof(consulta), "SELECT * FROM proyectoTD.usuario WHERE nombre = '%s' AND contrasena = '%s'", usuario, contrasena);
 	
 	if(PQstatus(conn) != CONNECTION_BAD){
 		res = PQexec(conn, consulta);
-		printf("---Validando nombre de usuario y contrasena---\n");
+		// printf("---Estableciendo conexion con la base de datos---\n");
 		if(res != NULL && PGRES_TUPLES_OK == PQresultStatus(res)){
-			printf("Datos correctos\n");
-			resultado = 0;
+			if (PQntuples(res) == 1){
+				//printf("Datos correctos\n\n");
+				resultado = 0;
+			} else{
+				//printf("Datos incorrectos\n\n");
+				resultado = 1;
+			}
 			PQclear(res);
 		}
 	} else{
-		printf("\n No se pudo conectar a la Base");
+		printf("\n No se pudo conectar a la base de datos");
 	}
 	PQfinish(conn);
 	return resultado;
