@@ -26,6 +26,8 @@ int main()
 	char direccionIP[15];
 	int puerto;
 	
+	int salir = 0;
+	
 	printf("\tPrograma cliente\n");
 	printf("Ingrese la direccion IP del servidor: ");
 	scanf("%s", direccionIP);
@@ -50,34 +52,42 @@ int main()
 		exit(1);
 	}
 	
-	printf("\n---Conexion establecida---\n");
-	
-	printf("Ingrese el nombre de usuario: ");
-	scanf("%s", usuario);
-	printf("Ingrese la contrasena: ");
-	scanf("%s", contrasena);
+	printf("\n\t---Conexion establecida---\n");
+	printf("***Para terminar la conexion, escriba salir como nombre de usuario y contrasena\n\n");
 	
   	
-	send(socket_servidor, usuario, 100, 0); //envio de usuario
-	send(socket_servidor, contrasena, 100, 0); //envio de contrasena
+	while (!salir) {
+	
+		printf("Ingrese el nombre de usuario: ");
+		scanf("%s", usuario);
+		printf("Ingrese la contrasena: ");
+		scanf("%s", contrasena);
+		
+		if (strcmp(usuario, "salir") == 0 && strcmp(contrasena, "salir") == 0) {
+			salir = 1;
+		}
+	
+		send(socket_servidor, usuario, 100, 0); //envio de usuario
+		send(socket_servidor, contrasena, 100, 0); //envio de contrasena
 	
 	
-	// Recibe la confirmacion
-	if(recv(socket_servidor, buffer, 10, 0) < 0)
-	{ //Comenzamos a recibir datos del cliente
-		printf("Error al recibir los datos\n");
-		close(socket_servidor);
-		return 1;
+		// Recibe la confirmacion
+		if(recv(socket_servidor, buffer, 10, 0) < 0)
+		{ //Comenzamos a recibir datos del cliente
+			printf("Error al recibir los datos\n");
+			close(socket_servidor);
+			return 1;
+		}
+		else
+		{
+			strcpy(resultado, buffer);
+			bzero((char *)&buffer, sizeof(buffer));
+			foco(resultado);
+		}
+	
 	}
-	else
-	{
-		strcpy(resultado, buffer);
-		bzero((char *)&buffer, sizeof(buffer));
-		foco(resultado);
-	}
 	
-	sleep(4);
-
+	printf("\n\t---Conexion terminada\n");
 	close(socket_servidor);
 
 	return 0;
@@ -88,13 +98,15 @@ static void foco(char resultado[10]){
 	
 	if (value == 0){
 		int status = system("usbrelay HURTM_1=1 > /dev/null 2>&1");
-		printf("---Encendido\n");
+		printf("---Datos correctos\n\n");
+		sleep(4);
+		status = system("usbrelay HURTM_1=0 > /dev/null 2>&1");
 	}
 	
 	value = strcmp(resultado, "Apagar");
 	if (value == 0)
 	{
 		int status = system("usbrelay HURTM_1=0 > /dev/null 2>&1");
-		printf("---Apagado\n");
+		printf("---Datos incorrectos\n\n");
 	}
 }
